@@ -207,6 +207,34 @@ class BlockRenderer:
             })
         return styles
 
+    def render_nested_block_as_dict(self, block, tag, sentences):
+        """
+        Convert the block object to the dict representation.
+        :param block: Block element
+        :param tag: Type of the block
+        :return: Dictionary with all the sentences in the block and tag as specified
+        """
+        block_dict = {}
+        if len(sentences) > 0:
+            pageWidth = self.doc.page_styles[block["page_idx"]][1]
+            pageHeight = self.doc.page_styles[block["page_idx"]][2]
+            block_dict = {
+                "tag": tag,
+                "page_idx": block["page_idx"],
+                "block_class": block["block_class"],
+                "sentences": [sent for sent in sentences],
+                "block_idx": block["block_idx"],
+                "bbox":{
+                    "left": block["box_style"][1],
+                    "top": block["box_style"][0],
+                    "width": block["box_style"][3],
+                    "height": block["box_style"][4],
+                    "pageHeight": pageHeight,
+                    "pageWidth": pageWidth,
+                 } if "box_style" in block else [],
+            }
+        return block_dict
+
     def render_json(self):
         """
         Render the blocks as JSON Dictionary.
@@ -250,35 +278,37 @@ class BlockRenderer:
                     is_rendering_merged_cells = True
 
             elif block_type == "header" and not is_rendering_table:
-                block_dict = {
-                    "tag": block_type,
-                    "page_idx": block["page_idx"],
-                    "block_class": block["block_class"],
-                    "sentences": [block_text],
-                    "bbox": [
-                        block["box_style"][1],
-                        block["box_style"][0],
-                        block["box_style"][1] + block["box_style"][3],
-                        block["box_style"][0] + block["box_style"][4],
-                    ] if "box_style" in block else []                 
-                }
+                block_dict = self.render_nested_block_as_dict(block, block_type, [block_text])
+                # block_dict = {
+                    # "tag": block_type,
+                    # "page_idx": block["page_idx"],
+                    # "block_class": block["block_class"],
+                    # "sentences": [block_text],
+                    # "bbox": [
+                    #     block["box_style"][1],
+                    #     block["box_style"][0],
+                    #     block["box_style"][1] + block["box_style"][3],
+                    #     block["box_style"][0] + block["box_style"][4],
+                    # ] if "box_style" in block else []                 
+                # }
             elif block_type == "list_item" and not is_rendering_table:
-                block_dict = self.render_nested_block_as_dict(block, "list_item")
+                block_dict = self.render_nested_block_as_dict(block, "list_item", block["block_sents"])
             elif (block_type == "para" or block_type == "numbered_list_item") and not is_rendering_table:
-                block_dict = self.render_nested_block_as_dict(block, "para")
+                block_dict = self.render_nested_block_as_dict(block, "para", block["block_sents"])
             elif 'is_table_start' not in block and not is_rendering_table and block_type == "table_row":
-                block_dict = {
-                    "tag": "para",
-                    "page_idx": block["page_idx"],
-                    "block_class": block["block_class"],
-                    "sentences": [block_text],
-                    "bbox": [
-                        block["box_style"][1],
-                        block["box_style"][0],
-                        block["box_style"][1] + block["box_style"][3],
-                        block["box_style"][0] + block["box_style"][4],
-                    ] if "box_style" in block else []                 
-                }
+                block_dict = self.render_nested_block_as_dict(self, block, "para", [block_text])
+                # block_dict = {
+                #     "tag": "para",
+                #     "page_idx": block["page_idx"],
+                #     "block_class": block["block_class"],
+                #     "sentences": [block_text],
+                #     "bbox": [
+                #         block["box_style"][1],
+                #         block["box_style"][0],
+                #         block["box_style"][1] + block["box_style"][3],
+                #         block["box_style"][0] + block["box_style"][4],
+                #     ] if "box_style" in block else []                 
+                # }
 
             if block_dict:
                 block_dict["block_idx"] = block["block_idx"]
@@ -325,7 +355,7 @@ class BlockRenderer:
                     for cell_idx, val in enumerate(cell_values):
                         if is_rendering_merged_cells and cell_idx == 1 and "effective_para" in block:
                             cells.append({
-                                "cell_value": self.render_nested_block_as_dict(block["effective_para"], "para"),
+                                "cell_value": self.render_nested_block_as_dict(block["effective_para"], "para", block["effective_para"]["block_sents"]),
                             })
                         else:
                             cells.append({
@@ -343,37 +373,25 @@ class BlockRenderer:
                 is_rendering_table = False
                 table_block = render_dict["blocks"][-1] 
                 table_block["table_rows"] = table_rows
-                table_block["bbox"] = [
-                        table_block["left"],
-                        table_block["top"],
-                        table_block["left"] + block["box_style"][3],
-                        table_block["top"] + block["box_style"][4],
-                    ]  if "box_style" in block else []                 
+                pageWidth = self.doc.page_styles[block["page_idx"]][1]
+                pageHeight = self.doc.page_styles[block["page_idx"]][2]                
+                table_block["bbox"] = {
+                        "left": table_block["left"],
+                        "top": table_block["top"],
+                        "width": block["box_style"][3],
+                        "height": block["box_style"][4],
+                        "pageHeight": pageHeight,
+                        "pageWidth": pageWidth,
+                  }  if "box_style" in block else []                 
+
+                # table_block["bbox"] = [
+                #         table_block["left"],
+                #         table_block["top"],
+                #         table_block["left"] + block["box_style"][3],
+                #         table_block["top"] + block["box_style"][4],
+                #     ]  if "box_style" in block else []                 
                 table_rows = []
 
         return render_dict
 
-    def render_nested_block_as_dict(self, block, tag):
-        """
-        Convert the block object to the dict representation.
-        :param block: Block element
-        :param tag: Type of the block
-        :return: Dictionary with all the sentences in the block and tag as specified
-        """
-        block_dict = {}
-        if len(block["block_sents"]) > 0:
-            block_dict = {
-                "tag": tag,
-                "page_idx": block["page_idx"],
-                "block_class": block["block_class"],
-                "sentences": [sent for sent in block["block_sents"]],
-                "block_idx": block["block_idx"],
-                "bbox": [
-                    block["box_style"][1],
-                    block["box_style"][0],
-                    block["box_style"][1] + block["box_style"][3],
-                    block["box_style"][0] + block["box_style"][4],
-                ] if "box_style" in block else [],
-            }
-        return block_dict
 
